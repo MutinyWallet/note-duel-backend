@@ -171,23 +171,26 @@ pub async fn add_sigs(
 }
 
 #[derive(Deserialize)]
-pub struct ListPendingEventsRequest {
+pub struct ListEventsRequest {
     pub pubkey: String,
 }
 
 #[derive(Serialize)]
-pub struct PendingBet {
+pub struct UserBet {
     id: i32,
     unsigned_a: UnsignedEvent,
     unsigned_b: UnsignedEvent,
     oracle_announcement: String,
-    needed_outcomes: Vec<String>,
+    oracle_event_id: EventId,
+    user_outcomes: Vec<String>,
+    counterparty_outcomes: Vec<String>,
+    outcome_event_id: Option<EventId>,
 }
 
 pub async fn list_pending_events_impl(
     state: &State,
-    request: ListPendingEventsRequest,
-) -> anyhow::Result<Vec<PendingBet>> {
+    request: ListEventsRequest,
+) -> anyhow::Result<Vec<UserBet>> {
     let pubkey = nostr::key::XOnlyPublicKey::from_str(&request.pubkey)?;
     let mut conn = state.db_pool.get()?;
     let bets = Bet::get_pending_bets(&mut conn, pubkey)?;
@@ -200,19 +203,22 @@ pub async fn list_pending_events_impl(
         let sigs = Sig::get_by_bet_id(&mut conn, bet.id)?;
         let signed_outcomes = sigs.into_iter().map(|s| s.outcome).collect::<Vec<_>>();
 
-        let mut outcomes = match oracle_announcement.oracle_event.event_descriptor {
+        let mut user_outcomes = match oracle_announcement.oracle_event.event_descriptor {
             EventDescriptor::EnumEvent(ref events) => events.outcomes.clone(),
             EventDescriptor::DigitDecompositionEvent(_) => continue,
         };
 
-        outcomes.retain(|o| !signed_outcomes.contains(o));
+        user_outcomes.retain(|o| !signed_outcomes.contains(o));
 
-        pending_bets.push(PendingBet {
+        pending_bets.push(UserBet {
             id: bet.id,
             unsigned_a,
             unsigned_b,
             oracle_announcement: base64::encode(oracle_announcement.encode()),
-            needed_outcomes: outcomes,
+            oracle_event_id: bet.oracle_event_id(),
+            user_outcomes,
+            counterparty_outcomes: signed_outcomes,
+            outcome_event_id: None,
         });
     }
 
@@ -221,12 +227,71 @@ pub async fn list_pending_events_impl(
 
 pub async fn list_pending_events(
     Extension(state): Extension<State>,
-    Query(request): Query<ListPendingEventsRequest>,
-) -> Result<Json<Vec<PendingBet>>, (StatusCode, String)> {
+    Query(request): Query<ListEventsRequest>,
+) -> Result<Json<Vec<UserBet>>, (StatusCode, String)> {
     match list_pending_events_impl(&state, request).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => {
             error!("Error listing pending events: {e}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+pub async fn list_events_impl(
+    state: &State,
+    request: ListEventsRequest,
+) -> anyhow::Result<Vec<UserBet>> {
+    let pubkey = nostr::key::XOnlyPublicKey::from_str(&request.pubkey)?;
+    let mut conn = state.db_pool.get()?;
+    let bets = Bet::get_active_bets(&mut conn, pubkey)?;
+
+    let mut pending_bets = Vec::with_capacity(bets.len());
+    for bet in bets {
+        let oracle_announcement = bet.oracle_announcement();
+        let unsigned_a = bet.unsigned_a();
+        let unsigned_b = bet.unsigned_b();
+        let sigs = Sig::get_by_bet_id(&mut conn, bet.id)?;
+        let user_a_outcomes = sigs
+            .iter()
+            .filter(|s| s.is_party_a)
+            .map(|s| s.outcome.clone())
+            .collect::<Vec<_>>();
+        let user_b_outcomes = sigs
+            .into_iter()
+            .filter(|s| !s.is_party_a)
+            .map(|s| s.outcome)
+            .collect::<Vec<_>>();
+
+        let (user, counterparty) = if bet.user_a() == pubkey {
+            (user_a_outcomes, user_b_outcomes)
+        } else {
+            (user_b_outcomes, user_a_outcomes)
+        };
+
+        pending_bets.push(UserBet {
+            id: bet.id,
+            unsigned_a,
+            unsigned_b,
+            oracle_announcement: base64::encode(oracle_announcement.encode()),
+            oracle_event_id: bet.oracle_event_id(),
+            user_outcomes: user,
+            counterparty_outcomes: counterparty,
+            outcome_event_id: bet.outcome_event_id(),
+        });
+    }
+
+    Ok(pending_bets)
+}
+
+pub async fn list_events(
+    Extension(state): Extension<State>,
+    Query(request): Query<ListEventsRequest>,
+) -> Result<Json<Vec<UserBet>>, (StatusCode, String)> {
+    match list_events_impl(&state, request).await {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => {
+            error!("Error listing events: {e}");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }

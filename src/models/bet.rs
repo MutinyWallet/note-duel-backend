@@ -127,6 +127,18 @@ impl Bet {
         Ok(res)
     }
 
+    pub fn get_active_bets(
+        conn: &mut PgConnection,
+        user: XOnlyPublicKey,
+    ) -> anyhow::Result<Vec<Bet>> {
+        let bytes = user.serialize().to_vec();
+        let res = bets::table
+            .filter(bets::needs_reply.eq(false))
+            .filter(bets::user_b.eq(&bytes).or(bets::user_a.eq(&bytes)))
+            .load::<Self>(conn)?;
+        Ok(res)
+    }
+
     pub fn get_unfinished_bets(conn: &mut PgConnection) -> anyhow::Result<HashSet<EventId>> {
         let res = bets::table
             .filter(bets::needs_reply.eq(false))
