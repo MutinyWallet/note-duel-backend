@@ -82,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/add-sigs", post(add_sigs))
         .route("/list-pending", get(list_pending_events))
         .route("/list-bets", get(list_events))
+        .route("/counts", get(get_counts))
         .fallback(fallback)
         .layer(Extension(state.clone()))
         .layer(

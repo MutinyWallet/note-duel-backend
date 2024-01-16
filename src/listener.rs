@@ -116,10 +116,17 @@ async fn handle_bet(
     bet: Bet,
 ) -> anyhow::Result<()> {
     let outcome = attestation.outcomes.first().ok_or(anyhow!("No outcomes"))?;
-    let sig = Sig::get_by_bet_id_and_outcome(conn, bet.id, outcome)?;
+    let sig_a = Sig::get_by_params(conn, bet.id, outcome, true)?;
+    let sig_b = Sig::get_by_params(conn, bet.id, outcome, false)?;
 
-    match sig {
-        None => Bet::set_outcome_event_id(conn, bet.id, EventId::all_zeros())?, // if no sig, set outcome to 0s
+    if sig_a.is_none() && sig_b.is_none() {
+        Bet::set_win_outcome_event_id(conn, bet.id, EventId::all_zeros())?; // if no sig, set outcome to 0s
+        Bet::set_lose_outcome_event_id(conn, bet.id, EventId::all_zeros())?; // if no sig, set outcome to 0s
+        return Ok(());
+    }
+
+    match sig_a {
+        None => (),
         Some(sig) => {
             let (_, s_value) = dlc::secp_utils::schnorrsig_decompose(&attestation.signatures[0])?;
 
@@ -130,17 +137,53 @@ async fn handle_bet(
 
             let valid_sig = state.schnorr.decrypt_signature(scalar, sig.sig());
 
-            let unsigned = if sig.is_party_a {
-                bet.unsigned_a()
+            let unsigned = if sig.is_win {
+                bet.win_a()
             } else {
-                bet.unsigned_b()
+                bet.lose_a()
             };
 
             let signature =
                 nostr::secp256k1::schnorr::Signature::from_slice(&valid_sig.to_bytes())?;
             let signed_event = unsigned.add_signature(signature)?;
 
-            Bet::set_outcome_event_id(conn, bet.id, signed_event.id)?;
+            if sig.is_win {
+                Bet::set_win_outcome_event_id(conn, bet.id, signed_event.id)?;
+            } else {
+                Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
+            }
+
+            client.send_event(signed_event).await?;
+        }
+    }
+
+    match sig_b {
+        None => (),
+        Some(sig) => {
+            let (_, s_value) = dlc::secp_utils::schnorrsig_decompose(&attestation.signatures[0])?;
+
+            let scalar: Scalar<Public> = Scalar::from_slice(s_value)
+                .ok_or(anyhow!("invalid scalar"))?
+                .non_zero()
+                .ok_or(anyhow!("zero scalar"))?;
+
+            let valid_sig = state.schnorr.decrypt_signature(scalar, sig.sig());
+
+            let unsigned = if sig.is_win {
+                bet.win_b()
+            } else {
+                bet.lose_b()
+            };
+
+            let signature =
+                nostr::secp256k1::schnorr::Signature::from_slice(&valid_sig.to_bytes())?;
+            let signed_event = unsigned.add_signature(signature)?;
+
+            if sig.is_win {
+                Bet::set_win_outcome_event_id(conn, bet.id, signed_event.id)?;
+            } else {
+                Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
+            }
 
             client.send_event(signed_event).await?;
         }

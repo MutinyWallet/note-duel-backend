@@ -1,15 +1,18 @@
 CREATE TABLE bets
 (
-    id                  SERIAL PRIMARY KEY,
-    oracle_announcement bytea     NOT NULL,
-    user_a              bytea     NOT NULL,
-    unsigned_a          jsonb     NOT NULL,
-    user_b              bytea     NOT NULL,
-    unsigned_b          jsonb     NOT NULL,
-    oracle_event_id     bytea     NOT NULL,
-    needs_reply         BOOLEAN   NOT NULL DEFAULT TRUE,
-    outcome_event_id    bytea,
-    created_at          TIMESTAMP NOT NULL DEFAULT NOW()
+    id                    SERIAL PRIMARY KEY,
+    oracle_announcement   bytea     NOT NULL,
+    user_a                bytea     NOT NULL,
+    win_a                 jsonb     NOT NULL,
+    lose_a                jsonb     NOT NULL,
+    user_b                bytea     NOT NULL,
+    win_b                 jsonb     NOT NULL,
+    lose_b                jsonb     NOT NULL,
+    oracle_event_id       bytea     NOT NULL,
+    needs_reply           BOOLEAN   NOT NULL DEFAULT TRUE,
+    win_outcome_event_id  bytea,
+    lose_outcome_event_id bytea,
+    created_at            TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 create index bets_user_a_idx on bets (user_a);
@@ -21,10 +24,11 @@ CREATE TABLE sigs
     id         SERIAL PRIMARY KEY,
     bet_id     integer NOT NULL,
     is_party_a boolean NOT NULL,
+    is_win     boolean NOT NULL,
     sig        bytea   NOT NULL,
     outcome    TEXT    NOT NULL,
     FOREIGN KEY (bet_id) REFERENCES bets (id)
 );
 
-create unique index sigs_bet_id_outcome_idx on sigs (bet_id, outcome);
+create unique index sigs_bet_id_outcome_idx on sigs (bet_id, outcome, is_party_a);
 create index sigs_bet_id_idx on sigs (bet_id);

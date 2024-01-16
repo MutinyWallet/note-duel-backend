@@ -25,6 +25,7 @@ pub struct Sig {
     pub id: i32,
     pub bet_id: i32,
     pub is_party_a: bool,
+    pub is_win: bool,
     sig: Vec<u8>,
     pub outcome: String,
 }
@@ -34,6 +35,7 @@ pub struct Sig {
 struct NewSig {
     bet_id: i32,
     is_party_a: bool,
+    is_win: bool,
     sig: Vec<u8>,
     outcome: String,
 }
@@ -47,13 +49,14 @@ impl Sig {
         conn: &mut PgConnection,
         bet_id: i32,
         is_party_a: bool,
-        sigs: HashMap<String, EncryptedSignature>,
+        sigs: HashMap<String, (EncryptedSignature, bool)>,
     ) -> anyhow::Result<Self> {
         let new_sigs = sigs
             .into_iter()
-            .map(|(outcome, sig)| NewSig {
+            .map(|(outcome, (sig, is_win))| NewSig {
                 bet_id,
                 is_party_a,
+                is_win,
                 sig: bincode::serialize(&sig).expect("invalid sig"),
                 outcome,
             })
@@ -70,14 +73,16 @@ impl Sig {
         Ok(res)
     }
 
-    pub fn get_by_bet_id_and_outcome(
+    pub fn get_by_params(
         conn: &mut PgConnection,
         bet_id: i32,
         outcome: &str,
+        is_party_a: bool,
     ) -> anyhow::Result<Option<Self>> {
         let res = sigs::table
             .filter(sigs::bet_id.eq(bet_id))
             .filter(sigs::outcome.eq(outcome))
+            .filter(sigs::is_party_a.eq(is_party_a))
             .first(conn)
             .optional()?;
 

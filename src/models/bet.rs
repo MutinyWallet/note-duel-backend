@@ -27,12 +27,15 @@ pub struct Bet {
     pub id: i32,
     oracle_announcement: Vec<u8>,
     user_a: Vec<u8>,
-    unsigned_a: Value,
+    win_a: Value,
+    lose_a: Value,
     user_b: Vec<u8>,
-    unsigned_b: Value,
+    win_b: Value,
+    lose_b: Value,
     oracle_event_id: Vec<u8>,
     pub needs_reply: bool,
-    outcome_event_id: Option<Vec<u8>>,
+    win_outcome_event_id: Option<Vec<u8>>,
+    lose_outcome_event_id: Option<Vec<u8>>,
     created_at: chrono::NaiveDateTime,
 }
 
@@ -41,9 +44,11 @@ pub struct Bet {
 struct NewBet {
     oracle_announcement: Vec<u8>,
     user_a: Vec<u8>,
-    unsigned_a: Value,
+    win_a: Value,
+    lose_a: Value,
     user_b: Vec<u8>,
-    unsigned_b: Value,
+    win_b: Value,
+    lose_b: Value,
     oracle_event_id: Vec<u8>,
 }
 
@@ -57,41 +62,59 @@ impl Bet {
         XOnlyPublicKey::from_slice(&self.user_a).expect("invalid user_a")
     }
 
-    pub fn unsigned_a(&self) -> UnsignedEvent {
-        UnsignedEvent::from_json(self.unsigned_a.to_string()).expect("invalid unsigned_a")
+    pub fn win_a(&self) -> UnsignedEvent {
+        UnsignedEvent::from_json(self.win_a.to_string()).expect("invalid win_a")
+    }
+
+    pub fn lose_a(&self) -> UnsignedEvent {
+        UnsignedEvent::from_json(self.lose_a.to_string()).expect("invalid lose_a")
     }
 
     pub fn user_b(&self) -> XOnlyPublicKey {
         XOnlyPublicKey::from_slice(&self.user_b).expect("invalid user_a")
     }
 
-    pub fn unsigned_b(&self) -> UnsignedEvent {
-        UnsignedEvent::from_json(self.unsigned_b.to_string()).expect("invalid unsigned_b")
+    pub fn win_b(&self) -> UnsignedEvent {
+        UnsignedEvent::from_json(self.win_b.to_string()).expect("invalid win_b")
+    }
+
+    pub fn lose_b(&self) -> UnsignedEvent {
+        UnsignedEvent::from_json(self.lose_b.to_string()).expect("invalid lose_b")
     }
 
     pub fn oracle_event_id(&self) -> EventId {
         EventId::from_slice(&self.oracle_event_id).expect("invalid oracle_event_id")
     }
 
-    pub fn outcome_event_id(&self) -> Option<EventId> {
-        self.outcome_event_id
+    pub fn win_outcome_event_id(&self) -> Option<EventId> {
+        self.win_outcome_event_id
             .as_ref()
-            .map(|b| EventId::from_slice(b).expect("invalid outcome_event_id"))
+            .map(|b| EventId::from_slice(b).expect("invalid win_outcome_event_id"))
+    }
+
+    pub fn lose_outcome_event_id(&self) -> Option<EventId> {
+        self.lose_outcome_event_id
+            .as_ref()
+            .map(|b| EventId::from_slice(b).expect("invalid lose_outcome_event_id"))
     }
 
     pub fn create(
         conn: &mut PgConnection,
         oracle_announcement: OracleAnnouncement,
-        unsigned_a: UnsignedEvent,
-        unsigned_b: UnsignedEvent,
+        win_a: UnsignedEvent,
+        lose_a: UnsignedEvent,
+        win_b: UnsignedEvent,
+        lose_b: UnsignedEvent,
         oracle_event_id: EventId,
     ) -> anyhow::Result<Self> {
         let new_bet = NewBet {
             oracle_announcement: oracle_announcement.encode(),
-            user_a: unsigned_a.pubkey.serialize().to_vec(),
-            unsigned_a: serde_json::to_value(unsigned_a)?,
-            user_b: unsigned_b.pubkey.serialize().to_vec(),
-            unsigned_b: serde_json::to_value(unsigned_b)?,
+            user_a: win_a.pubkey.serialize().to_vec(),
+            win_a: serde_json::to_value(win_a)?,
+            lose_a: serde_json::to_value(lose_a)?,
+            user_b: win_b.pubkey.serialize().to_vec(),
+            win_b: serde_json::to_value(win_b)?,
+            lose_b: serde_json::to_value(lose_b)?,
             oracle_event_id: oracle_event_id.to_bytes().to_vec(),
         };
         let res = diesel::insert_into(bets::table)
@@ -142,7 +165,7 @@ impl Bet {
     pub fn get_unfinished_bets(conn: &mut PgConnection) -> anyhow::Result<HashSet<EventId>> {
         let res = bets::table
             .filter(bets::needs_reply.eq(false))
-            .filter(bets::outcome_event_id.is_null())
+            .filter(bets::win_outcome_event_id.is_null())
             .select(bets::oracle_event_id)
             .load::<Vec<u8>>(conn)?
             .into_iter()
@@ -158,14 +181,44 @@ impl Bet {
         Ok(res)
     }
 
-    pub fn set_outcome_event_id(
+    pub fn set_win_outcome_event_id(
         conn: &mut PgConnection,
         id: i32,
-        outcome_event_id: EventId,
+        win_outcome_event_id: EventId,
     ) -> anyhow::Result<()> {
         diesel::update(bets::table.find(id))
-            .set(bets::outcome_event_id.eq(outcome_event_id.to_bytes().to_vec()))
+            .set(bets::win_outcome_event_id.eq(win_outcome_event_id.to_bytes().to_vec()))
             .execute(conn)?;
         Ok(())
+    }
+
+    pub fn set_lose_outcome_event_id(
+        conn: &mut PgConnection,
+        id: i32,
+        lose_outcome_event_id: EventId,
+    ) -> anyhow::Result<()> {
+        diesel::update(bets::table.find(id))
+            .set(bets::lose_outcome_event_id.eq(lose_outcome_event_id.to_bytes().to_vec()))
+            .execute(conn)?;
+        Ok(())
+    }
+
+    pub fn get_active_event_count(conn: &mut PgConnection) -> anyhow::Result<i64> {
+        let res = bets::table
+            .filter(bets::needs_reply.eq(false))
+            .filter(bets::win_outcome_event_id.is_null())
+            .count()
+            .get_result::<i64>(conn)?;
+
+        Ok(res)
+    }
+
+    pub fn get_completed_event_count(conn: &mut PgConnection) -> anyhow::Result<i64> {
+        let res = bets::table
+            .filter(bets::win_outcome_event_id.is_not_null())
+            .count()
+            .get_result::<i64>(conn)?;
+
+        Ok(res)
     }
 }

@@ -5,12 +5,15 @@ diesel::table! {
         id -> Int4,
         oracle_announcement -> Bytea,
         user_a -> Bytea,
-        unsigned_a -> Jsonb,
+        win_a -> Jsonb,
+        lose_a -> Jsonb,
         user_b -> Bytea,
-        unsigned_b -> Jsonb,
+        win_b -> Jsonb,
+        lose_b -> Jsonb,
         oracle_event_id -> Bytea,
         needs_reply -> Bool,
-        outcome_event_id -> Nullable<Bytea>,
+        win_outcome_event_id -> Nullable<Bytea>,
+        lose_outcome_event_id -> Nullable<Bytea>,
         created_at -> Timestamp,
     }
 }
@@ -20,6 +23,7 @@ diesel::table! {
         id -> Int4,
         bet_id -> Int4,
         is_party_a -> Bool,
+        is_win -> Bool,
         sig -> Bytea,
         outcome -> Text,
     }
