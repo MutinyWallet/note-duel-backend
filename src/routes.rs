@@ -1,10 +1,12 @@
 use crate::models::bet::Bet;
+use crate::models::sig::Sig;
 use crate::{models, utils, State};
 use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::{Extension, Json};
 use dlc::secp256k1_zkp::hashes::sha256;
 use dlc::OracleInfo;
+use dlc_messages::oracle_msgs::EventDescriptor;
 use lightning::util::ser::Writeable;
 use log::error;
 use nostr::hashes::hex::FromHex;
@@ -179,6 +181,7 @@ pub struct PendingBet {
     unsigned_a: UnsignedEvent,
     unsigned_b: UnsignedEvent,
     oracle_announcement: String,
+    needed_outcomes: Vec<String>,
 }
 
 pub async fn list_pending_events_impl(
@@ -194,12 +197,22 @@ pub async fn list_pending_events_impl(
         let oracle_announcement = bet.oracle_announcement();
         let unsigned_a = bet.unsigned_a();
         let unsigned_b = bet.unsigned_b();
+        let sigs = Sig::get_by_bet_id(&mut conn, bet.id)?;
+        let signed_outcomes = sigs.into_iter().map(|s| s.outcome).collect::<Vec<_>>();
+
+        let mut outcomes = match oracle_announcement.oracle_event.event_descriptor {
+            EventDescriptor::EnumEvent(ref events) => events.outcomes.clone(),
+            EventDescriptor::DigitDecompositionEvent(_) => continue,
+        };
+
+        outcomes.retain(|o| !signed_outcomes.contains(o));
 
         pending_bets.push(PendingBet {
             id: bet.id,
             unsigned_a,
             unsigned_b,
             oracle_announcement: base64::encode(oracle_announcement.encode()),
+            needed_outcomes: outcomes,
         });
     }
 

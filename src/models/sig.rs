@@ -26,7 +26,7 @@ pub struct Sig {
     pub bet_id: i32,
     pub is_party_a: bool,
     sig: Vec<u8>,
-    outcome: String,
+    pub outcome: String,
 }
 
 #[derive(Insertable, AsChangeset)]
@@ -62,6 +62,12 @@ impl Sig {
         Ok(diesel::insert_into(sigs::table)
             .values(new_sigs)
             .get_result(conn)?)
+    }
+
+    pub fn get_by_bet_id(conn: &mut PgConnection, bet_id: i32) -> anyhow::Result<Vec<Self>> {
+        let res = sigs::table.filter(sigs::bet_id.eq(bet_id)).load(conn)?;
+
+        Ok(res)
     }
 
     pub fn get_by_bet_id_and_outcome(
