@@ -19,7 +19,7 @@ pub fn create_bet(
     unsigned_b: UnsignedEvent,
     oracle_event_id: EventId,
     sigs: HashMap<String, EncryptedSignature>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i32> {
     conn.transaction(|conn| {
         let bet = Bet::create(
             conn,
@@ -29,7 +29,7 @@ pub fn create_bet(
             oracle_event_id,
         )?;
         sig::Sig::create_all(conn, bet.id, true, sigs)?;
-        Ok(())
+        Ok(bet.id)
     })
 }
 

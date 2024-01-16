@@ -30,7 +30,7 @@ pub struct CreateBetRequest {
     sigs: HashMap<String, String>,
 }
 
-async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Result<()> {
+async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Result<i32> {
     let oracle_announcement = utils::oracle_announcement_from_str(&request.oracle_announcement)?;
     let oracle_info = OracleInfo {
         public_key: oracle_announcement.oracle_public_key,
@@ -72,7 +72,7 @@ async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Re
     let oracle_event_id = EventId::from_str(&request.oracle_event_id)?;
 
     let mut conn = state.db_pool.get()?;
-    models::create_bet(
+    let id = models::create_bet(
         &mut conn,
         oracle_announcement,
         request.unsigned_event,
@@ -81,15 +81,15 @@ async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Re
         sigs,
     )?;
 
-    Ok(())
+    Ok(id)
 }
 
 pub async fn create_bet(
     Extension(state): Extension<State>,
     Json(request): Json<CreateBetRequest>,
-) -> Result<Json<bool>, (StatusCode, String)> {
+) -> Result<Json<i32>, (StatusCode, String)> {
     match create_bet_impl(&state, request).await {
-        Ok(_) => Ok(Json(true)),
+        Ok(id) => Ok(Json(id)),
         Err(e) => {
             error!("Error creating bet: {e}");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
