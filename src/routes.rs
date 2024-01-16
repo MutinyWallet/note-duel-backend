@@ -175,6 +175,7 @@ pub struct ListPendingEventsRequest {
 
 #[derive(Serialize)]
 pub struct PendingBet {
+    id: i32,
     unsigned_a: UnsignedEvent,
     unsigned_b: UnsignedEvent,
     oracle_announcement: String,
@@ -195,6 +196,7 @@ pub async fn list_pending_events_impl(
         let unsigned_b = bet.unsigned_b();
 
         pending_bets.push(PendingBet {
+            id: bet.id,
             unsigned_a,
             unsigned_b,
             oracle_announcement: base64::encode(oracle_announcement.encode()),
