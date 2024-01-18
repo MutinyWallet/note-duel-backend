@@ -369,3 +369,19 @@ pub async fn get_counts(
         }
     }
 }
+
+pub async fn get_event_ids(
+    Extension(state): Extension<State>,
+) -> Result<Json<Vec<EventId>>, (StatusCode, String)> {
+    let mut conn = state
+        .db_pool
+        .get()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    match Bet::get_event_ids(&mut conn) {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => {
+            error!("Error listing event_ids: {e}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}

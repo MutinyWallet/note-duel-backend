@@ -221,4 +221,23 @@ impl Bet {
 
         Ok(res)
     }
+
+    pub fn get_event_ids(conn: &mut PgConnection) -> anyhow::Result<Vec<EventId>> {
+        let events = bets::table
+            .select((bets::win_outcome_event_id, bets::lose_outcome_event_id))
+            .load::<(Option<Vec<u8>>, Option<Vec<u8>>)>(conn)?
+            .into_iter()
+            .flat_map(|(w, l)| {
+                let w = w.map(|w| vec![EventId::from_slice(&w).expect("event_id")]);
+                let l = l.map(|l| vec![EventId::from_slice(&l).expect("event_id")]);
+
+                let mut vec = w.unwrap_or_default();
+                vec.extend(l.unwrap_or_default());
+
+                vec
+            })
+            .collect();
+
+        Ok(events)
+    }
 }
