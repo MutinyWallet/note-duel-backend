@@ -177,17 +177,17 @@ async fn add_sigs_impl(state: &State, request: AddSigsRequest) -> anyhow::Result
         let encryption_key: Point<Normal, Public, NonZero> =
             Point::from_bytes(point.serialize()).ok_or(anyhow::anyhow!("invalid pubkey"))?;
 
-        let is_win = state.schnorr.verify_encrypted_signature(
-            &verification_key,
-            &encryption_key,
-            win_message,
-            &sig,
-        );
-
         let is_lose = state.schnorr.verify_encrypted_signature(
             &verification_key,
             &encryption_key,
             lose_message,
+            &sig,
+        );
+
+        let is_win = state.schnorr.verify_encrypted_signature(
+            &verification_key,
+            &encryption_key,
+            win_message,
             &sig,
         );
 
