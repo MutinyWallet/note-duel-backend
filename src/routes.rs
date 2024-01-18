@@ -27,7 +27,7 @@ pub async fn health_check() -> Result<Json<bool>, (StatusCode, String)> {
 #[derive(Deserialize)]
 pub struct CreateBetRequest {
     oracle_announcement: String,
-    oracle_event_id: String,
+    oracle_event_id: EventId,
     win_event: UnsignedEvent,
     lose_event: UnsignedEvent,
     counterparty_win_event: UnsignedEvent,
@@ -95,8 +95,6 @@ async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Re
         sigs.insert(outcome, (sig, is_win));
     }
 
-    let oracle_event_id = EventId::from_str(&request.oracle_event_id)?;
-
     let mut conn = state.db_pool.get()?;
     let id = models::create_bet(
         &mut conn,
@@ -105,7 +103,7 @@ async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Re
         request.lose_event,
         request.counterparty_win_event,
         request.counterparty_lose_event,
-        oracle_event_id,
+        request.oracle_event_id,
         sigs,
     )?;
 
