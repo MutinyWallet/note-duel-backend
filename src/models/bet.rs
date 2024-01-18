@@ -135,6 +135,11 @@ impl Bet {
         let bytes = oracle_event_id.to_bytes().to_vec();
         let res = bets::table
             .filter(bets::oracle_event_id.eq(bytes))
+            .filter(
+                bets::win_outcome_event_id
+                    .is_null()
+                    .or(bets::lose_outcome_event_id.is_null()),
+            )
             .load::<Self>(conn)?;
         Ok(res)
     }
