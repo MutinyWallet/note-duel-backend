@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use diesel::PgConnection;
 use dlc_messages::oracle_msgs::OracleAttestation;
 use log::{debug, error, info, warn};
-use nostr::{Event, EventId, Filter, Keys, Kind, Tag};
+use nostr::{ClientMessage, Event, EventId, Filter, Keys, Kind, Tag};
 use nostr_sdk::{Client, RelayPoolNotification};
 use schnorr_fun::adaptor::Adaptor;
 use schnorr_fun::fun::marker::Public;
@@ -21,6 +21,8 @@ pub async fn start_listener(
     mut event_receiver: Receiver<HashSet<EventId>>,
 ) -> anyhow::Result<()> {
     debug!("Using relays: {:?}", relays);
+
+    let blastr = reqwest::Client::new();
 
     let keys = Keys::generate();
     loop {
@@ -48,11 +50,13 @@ pub async fn start_listener(
                             if event.kind.as_u64() == 89 && event.verify().is_ok() {
                                 let state_clone = state.clone();
                                 let client_clone = client.clone();
+                                let blastr_clone = blastr.clone();
                                 tokio::spawn({
                                     async move {
                                         let fut = handle_event(
                                             state_clone,
                                             client_clone,
+                                            &blastr_clone,
                                             event,
                                         );
 
@@ -84,7 +88,12 @@ pub async fn start_listener(
     }
 }
 
-async fn handle_event(state: State, client: Client, event: Event) -> anyhow::Result<()> {
+async fn handle_event(
+    state: State,
+    client: Client,
+    blastr: &reqwest::Client,
+    event: Event,
+) -> anyhow::Result<()> {
     let e_tag = event.tags.into_iter().find_map(|t| {
         if let Tag::Event { event_id, .. } = t {
             Some(event_id)
@@ -100,7 +109,7 @@ async fn handle_event(state: State, client: Client, event: Event) -> anyhow::Res
     let bets = Bet::get_by_oracle_event(&mut conn, &e_tag)?;
 
     for bet in bets {
-        if let Err(e) = handle_bet(&mut conn, &state, &client, &attestation, bet).await {
+        if let Err(e) = handle_bet(&mut conn, &state, &client, blastr, &attestation, bet).await {
             error!("Error handling bet: {e}");
         }
     }
@@ -112,6 +121,7 @@ async fn handle_bet(
     conn: &mut PgConnection,
     state: &State,
     client: &Client,
+    blastr: &reqwest::Client,
     attestation: &OracleAttestation,
     bet: Bet,
 ) -> anyhow::Result<()> {
@@ -153,6 +163,13 @@ async fn handle_bet(
                 Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
             }
 
+            let msg = ClientMessage::new_auth(signed_event.clone());
+            blastr
+                .post("https://nostr.mutinywallet.com")
+                .json(&msg)
+                .send()
+                .await
+                .ok();
             let event_id = client.send_event(signed_event).await?;
             info!("Sent event with id: {event_id}")
         }
@@ -186,6 +203,13 @@ async fn handle_bet(
                 Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
             }
 
+            let msg = ClientMessage::new_auth(signed_event.clone());
+            blastr
+                .post("https://nostr.mutinywallet.com")
+                .json(&msg)
+                .send()
+                .await
+                .ok();
             let event_id = client.send_event(signed_event).await?;
             info!("Sent event with id: {event_id}")
         }
