@@ -122,11 +122,11 @@ async fn handle_bet(
     if sig_a.is_none() && sig_b.is_none() {
         Bet::set_win_outcome_event_id(conn, bet.id, EventId::all_zeros())?; // if no sig, set outcome to 0s
         Bet::set_lose_outcome_event_id(conn, bet.id, EventId::all_zeros())?; // if no sig, set outcome to 0s
-        return Ok(());
+        return Ok(warn!("No sigs found for event"));
     }
 
     match sig_a {
-        None => (),
+        None => warn!("Sig A not found!"),
         Some(sig) => {
             let (_, s_value) = dlc::secp_utils::schnorrsig_decompose(&attestation.signatures[0])?;
 
@@ -158,7 +158,7 @@ async fn handle_bet(
     }
 
     match sig_b {
-        None => (),
+        None => warn!("Sig B not found!"),
         Some(sig) => {
             let (_, s_value) = dlc::secp_utils::schnorrsig_decompose(&attestation.signatures[0])?;
 
