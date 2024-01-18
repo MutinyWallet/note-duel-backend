@@ -56,7 +56,7 @@ pub async fn start_listener(
                                             event,
                                         );
 
-                                        match tokio::time::timeout(Duration::from_secs(30), fut).await {
+                                        match tokio::time::timeout(Duration::from_secs(120), fut).await {
                                             Ok(Ok(_)) => {}
                                             Ok(Err(e)) => error!("Error: {e}"),
                                             Err(_) => error!("Timeout"),
@@ -153,7 +153,8 @@ async fn handle_bet(
                 Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
             }
 
-            client.send_event(signed_event).await?;
+            let event_id = client.send_event(signed_event).await?;
+            info!("Sent event with id: {event_id}")
         }
     }
 
@@ -185,7 +186,8 @@ async fn handle_bet(
                 Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
             }
 
-            client.send_event(signed_event).await?;
+            let event_id = client.send_event(signed_event).await?;
+            info!("Sent event with id: {event_id}")
         }
     }
 
