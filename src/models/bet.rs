@@ -240,4 +240,9 @@ impl Bet {
 
         Ok(events)
     }
+
+    pub fn delete_by_bet_id(conn: &mut PgConnection, bet_id: i32) -> anyhow::Result<()> {
+        diesel::delete(bets::table.find(bet_id)).execute(conn)?;
+        Ok(())
+    }
 }

@@ -80,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/health-check", get(health_check))
         .route("/create-bet", post(create_bet))
         .route("/add-sigs", post(add_sigs))
+        .route("/reject", post(reject))
         .route("/list-pending", get(list_pending_events))
         .route("/list-bets", get(list_events))
         .route("/counts", get(get_counts))

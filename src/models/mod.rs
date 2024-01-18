@@ -1,7 +1,9 @@
 use crate::models::bet::Bet;
+use crate::models::sig::Sig;
 use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use dlc_messages::oracle_msgs::OracleAnnouncement;
+use nostr::key::XOnlyPublicKey;
 use nostr::{EventId, UnsignedEvent};
 use schnorr_fun::adaptor::EncryptedSignature;
 use serde::{Deserialize, Serialize};
@@ -34,7 +36,7 @@ pub fn create_bet(
             lose_b,
             oracle_event_id,
         )?;
-        sig::Sig::create_all(conn, bet.id, true, sigs)?;
+        Sig::create_all(conn, bet.id, true, sigs)?;
         Ok(bet.id)
     })
 }
@@ -45,9 +47,23 @@ pub fn add_sigs(
     sigs: HashMap<String, (EncryptedSignature, bool)>,
 ) -> anyhow::Result<Bet> {
     conn.transaction(|conn| {
-        sig::Sig::create_all(conn, bet_id, false, sigs)?;
+        Sig::create_all(conn, bet_id, false, sigs)?;
         let bet = Bet::set_needs_reply(conn, bet_id)?;
         Ok(bet)
+    })
+}
+
+pub fn reject_bet(conn: &mut PgConnection, bet_id: i32, key: XOnlyPublicKey) -> anyhow::Result<()> {
+    conn.transaction(|conn| {
+        let event = Bet::get_by_id(conn, bet_id)?;
+
+        if let Some(bet) = event {
+            if bet.user_a() == key || bet.user_b() == key {
+                Sig::delete_by_bet_id(conn, bet_id)?;
+                Bet::delete_by_bet_id(conn, bet_id)?;
+            }
+        }
+        Ok(())
     })
 }
 

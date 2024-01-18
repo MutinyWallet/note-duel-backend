@@ -5,13 +5,12 @@ use crate::{models, utils, State};
 use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::{Extension, Json};
-use dlc::secp256k1_zkp::hashes::hex::ToHex;
 use dlc::secp256k1_zkp::hashes::sha256;
 use dlc::OracleInfo;
 use dlc_messages::oracle_msgs::EventDescriptor;
 use lightning::util::ser::Writeable;
 use log::error;
-use nostr::{EventId, UnsignedEvent};
+use nostr::{Event, EventId, UnsignedEvent};
 use schnorr_fun::adaptor::{Adaptor, EncryptedSignature};
 use schnorr_fun::fun::marker::{EvenY, NonZero, Normal, Public};
 use schnorr_fun::fun::Point;
@@ -256,10 +255,10 @@ pub async fn list_pending_events_impl(
         let win_b = bet.win_b();
         let lose_b = bet.lose_b();
         let sigs = Sig::get_by_bet_id(&mut conn, bet.id)?;
-        let is_a = win_a.pubkey.to_hex() == request.pubkey;
+        let is_a = win_a.pubkey == pubkey;
         let outcomes_a = sigs
             .into_iter()
-            .filter(|s| s.is_party_a == is_a && s.is_win)
+            .filter(|s| s.is_party_a && s.is_win)
             .map(|s| s.outcome)
             .collect::<HashSet<_>>();
 
@@ -397,6 +396,34 @@ pub async fn get_event_ids(
         Ok(res) => Ok(Json(res)),
         Err(e) => {
             error!("Error listing event_ids: {e}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RejectBetRequest {
+    pub id: i32,
+    pub sig: Event,
+}
+
+pub async fn reject(
+    Extension(state): Extension<State>,
+    Json(request): Json<RejectBetRequest>,
+) -> Result<Json<bool>, (StatusCode, String)> {
+    let mut conn = state
+        .db_pool
+        .get()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if request.sig.verify().is_err() || request.sig.content != format!("reject {}", request.id) {
+        return Err((StatusCode::BAD_REQUEST, "invalid sig".to_string()));
+    }
+
+    match models::reject_bet(&mut conn, request.id, request.sig.pubkey) {
+        Ok(_) => Ok(Json(true)),
+        Err(e) => {
+            error!("Error rejecting event: {e}");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }

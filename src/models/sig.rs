@@ -73,6 +73,11 @@ impl Sig {
         Ok(res)
     }
 
+    pub fn delete_by_bet_id(conn: &mut PgConnection, bet_id: i32) -> anyhow::Result<()> {
+        diesel::delete(sigs::table.filter(sigs::bet_id.eq(bet_id))).execute(conn)?;
+        Ok(())
+    }
+
     pub fn get_by_params(
         conn: &mut PgConnection,
         bet_id: i32,
