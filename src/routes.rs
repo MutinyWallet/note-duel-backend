@@ -137,6 +137,22 @@ async fn add_sigs_impl(state: &State, request: AddSigsRequest) -> anyhow::Result
         anyhow::bail!("bet already setup")
     }
 
+    let all_outcomes = if let EventDescriptor::EnumEvent(ref desc) =
+        bet.oracle_announcement().oracle_event.event_descriptor
+    {
+        desc.outcomes.clone()
+    } else {
+        anyhow::bail!("Only enum events supported");
+    };
+
+    if request.sigs.len() != all_outcomes.len() {
+        anyhow::bail!(
+            "Incorrect number of sigs, {} != {}",
+            request.sigs.len(),
+            all_outcomes.len()
+        );
+    }
+
     let oracle_announcement = bet.oracle_announcement();
     let oracle_info = OracleInfo {
         public_key: oracle_announcement.oracle_public_key,
