@@ -2,6 +2,7 @@ use crate::models::bet::Bet;
 use crate::models::sig::Sig;
 use crate::models::Counts;
 use crate::{models, utils, State};
+use anyhow::anyhow;
 use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::{Extension, Json};
@@ -34,6 +35,15 @@ pub struct CreateBetRequest {
     sigs: HashMap<String, EncryptedSignature>,
 }
 
+pub fn verify_id(e: &UnsignedEvent) -> anyhow::Result<()> {
+    let id: EventId = EventId::new(&e.pubkey, e.created_at, &e.kind, &e.tags, &e.content);
+    if id == e.id {
+        Ok(())
+    } else {
+        Err(anyhow!("Invalid event id {e:?}"))
+    }
+}
+
 async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Result<i32> {
     let oracle_announcement = utils::oracle_announcement_from_str(&request.oracle_announcement)?;
     let oracle_info = OracleInfo {
@@ -56,6 +66,12 @@ async fn create_bet_impl(state: &State, request: CreateBetRequest) -> anyhow::Re
             all_outcomes.len()
         );
     }
+
+    // verify ids
+    verify_id(&request.win_event)?;
+    verify_id(&request.lose_event)?;
+    verify_id(&request.counterparty_win_event)?;
+    verify_id(&request.counterparty_lose_event)?;
 
     let verification_key: Point<EvenY, Public, NonZero> =
         Point::from_xonly_bytes(request.win_event.pubkey.serialize())
