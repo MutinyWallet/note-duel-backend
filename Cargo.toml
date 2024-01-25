@@ -23,7 +23,7 @@ diesel_migrations = "2.1.0"
 futures = "0.3"
 lightning = "0.0.118"
 nostr = "0.27.0"
-nostr-sdk = "0.27.0"
+nostr-sdk = { version = "0.27.0", features = ["sqlite"] }
 serde = "1.0"
 serde_json = "1.0"
 schnorr_fun = { version = "0.9.1", features = ["bincode", "serde"] }
