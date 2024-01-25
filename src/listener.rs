@@ -94,9 +94,9 @@ async fn handle_event(
     blastr: &reqwest::Client,
     event: Event,
 ) -> anyhow::Result<()> {
-    let e_tag = event.tags.into_iter().find_map(|t| {
+    let e_tag = event.tags.iter().find_map(|t| {
         if let Tag::Event { event_id, .. } = t {
-            Some(event_id)
+            Some(*event_id)
         } else {
             None
         }
@@ -163,7 +163,7 @@ async fn handle_bet(
                 Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
             }
 
-            let msg = ClientMessage::new_auth(signed_event.clone());
+            let msg = ClientMessage::event(signed_event.clone());
             blastr
                 .post("https://nostr.mutinywallet.com")
                 .json(&msg)
@@ -203,7 +203,7 @@ async fn handle_bet(
                 Bet::set_lose_outcome_event_id(conn, bet.id, signed_event.id)?;
             }
 
-            let msg = ClientMessage::new_auth(signed_event.clone());
+            let msg = ClientMessage::event(signed_event.clone());
             blastr
                 .post("https://nostr.mutinywallet.com")
                 .json(&msg)
