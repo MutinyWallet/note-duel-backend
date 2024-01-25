@@ -11,15 +11,19 @@ use diesel::PgConnection;
 use diesel_migrations::MigrationHarness;
 use dlc::secp256k1_zkp::{All, Secp256k1};
 use log::{error, info};
-use nostr::EventId;
+use nostr::{EventId, Filter, Keys, Timestamp};
+use nostr_database::NostrDatabase;
+use nostr_sdk::ClientBuilder;
 use schnorr_fun::nonce::Deterministic;
 use schnorr_fun::Schnorr;
 use sha2::Sha256;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch::Sender;
 use tokio::sync::{oneshot, watch, Mutex};
+use tokio::time::sleep;
 use tower_http::cors::{Any, CorsLayer};
 
 mod config;
@@ -120,15 +124,48 @@ async fn main() -> anyhow::Result<()> {
         let _ = tx.send(());
     });
 
+    let database = nostr_sqlite::SQLiteDatabase::open(config.events_db).await?;
+
     let relays = config.relay.clone();
+    let listener_db = database.clone();
     tokio::spawn(async move {
         loop {
-            if let Err(e) =
-                listener::start_listener(relays.clone(), state.clone(), event_receiver.clone())
-                    .await
+            if let Err(e) = listener::start_listener(
+                relays.clone(),
+                state.clone(),
+                listener_db.clone(),
+                event_receiver.clone(),
+            )
+            .await
             {
                 error!("listener error: {e}")
             }
+        }
+    });
+
+    let relays = config.relay.clone();
+    tokio::spawn(async move {
+        let duration = Duration::from_secs(60);
+        loop {
+            let now = Timestamp::now();
+            let time: Timestamp = now - duration;
+            let filter = Filter::new().since(time);
+            if let Ok(events) = database.query(vec![filter], Default::default()).await {
+                if !events.is_empty() {
+                    let client = ClientBuilder::new()
+                        .signer(Keys::generate())
+                        .database(database.clone())
+                        .build();
+                    client.add_relays(relays.clone()).await.unwrap();
+                    client.connect().await;
+
+                    if let Err(e) = client.batch_event(events, Default::default()).await {
+                        error!("Error sending events: {e:?}")
+                    }
+                }
+            }
+
+            sleep(duration).await;
         }
     });
 

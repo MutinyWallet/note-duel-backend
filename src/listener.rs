@@ -7,7 +7,8 @@ use diesel::PgConnection;
 use dlc_messages::oracle_msgs::OracleAttestation;
 use log::{debug, error, info, warn};
 use nostr::{ClientMessage, Event, EventId, Filter, Keys, Kind, Tag};
-use nostr_sdk::{Client, RelayPoolNotification};
+use nostr_sdk::{Client, ClientBuilder, RelayPoolNotification};
+use nostr_sqlite::SQLiteDatabase;
 use schnorr_fun::adaptor::Adaptor;
 use schnorr_fun::fun::marker::Public;
 use schnorr_fun::fun::Scalar;
@@ -18,6 +19,7 @@ use tokio::sync::watch::Receiver;
 pub async fn start_listener(
     relays: Vec<String>,
     state: State,
+    listener_db: SQLiteDatabase,
     mut event_receiver: Receiver<HashSet<EventId>>,
 ) -> anyhow::Result<()> {
     debug!("Using relays: {:?}", relays);
@@ -26,7 +28,10 @@ pub async fn start_listener(
 
     let keys = Keys::generate();
     loop {
-        let client = Client::new(&keys);
+        let client = ClientBuilder::new()
+            .signer(&keys)
+            .database(listener_db.clone())
+            .build();
         client.add_relays(relays.clone()).await?;
         client.connect().await;
 
